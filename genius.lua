@@ -24,13 +24,12 @@ local ZYZZQUOTES = {
 	"Everyone has a little zyzz in them",
 	"Haters gonna hate!",
 	"Go hard mate the gym lifestyle is the best!",
-	"my message is to train hard",
+	"My message is to train hard",
 }
 
 local vars = {
 	pos1 = 0,
 	pos2 = 0,
-	deathtimer = 0,
 	killtimer = 0,
 	dtalpha = 0,
     dtalpha1 = 0,
@@ -322,7 +321,7 @@ visuals = {
 	Zyzzhud = function()
 		if not miscfuncs.contains(ui.get(elements.visualstab.indoptions),"Motivational Zyzz") then return end
 		local lx, ly, lz = entity.hitbox_position(entity.get_local_player(), 14)
-		local w, h = renderer.measure_text(nil, string.format("  %s  ", vars.text))
+ 		local w, h = renderer.measure_text(nil, string.format("  %s  ", vars.text))
 		pos = miscfuncs.get_attachment_vector(false)
 		if pos == nil and not ui.get(refs.alive_thirdperson[2]) then
 			return
@@ -331,15 +330,14 @@ visuals = {
 		else
 			x, y, z = renderer.world_to_screen(pos[1], pos[2], pos[3])
 		end
+		if x == nil or y == nil then return end
 		vars.pos1 = easing.quint_in(1, vars.pos1, x - vars.pos1, 2)
 		vars.pos2 = easing.quint_in(1, vars.pos2, y - vars.pos2, 2)
 		if logo ~= nil and logo1 ~= nil and logo2 ~= nil then
-			if vars.deathtimer > globals.curtime() then
-				logo1:draw(vars.pos1 - 150, vars.pos2 - 150, 100, 100, 255, 255, 255, 255)
-			elseif vars.killtimer > globals.curtime() then
-				logo2:draw(vars.pos1 - 150, vars.pos2 - 150, 100, 100, 255, 255, 255, 255)
+			if vars.killtimer > globals.curtime() then
 				miscfuncs.render_outlined_rounded_rectangle(vars.pos1 - 165 - w, vars.pos2 - 150, w, 30, 15, 15, 15, 255, 15,30)
-				renderer.text(vars.pos1 - 158 - w, vars.pos2 - 143, 255, 255, 255, 225, "l", nil, vars.text)
+				renderer.text(vars.pos1 - 159 - w, vars.pos2 - 142, 255, 255, 255, 225, "l", nil, vars.text)
+				logo2:draw(vars.pos1 - 150, vars.pos2 - 150, 100, 100, 255, 255, 255, 255)
 			else
 				logo:draw(vars.pos1 - 150, vars.pos2 - 150, 100, 100, 255, 255, 255, 255)
 			end
@@ -377,7 +375,7 @@ visuals = {
 }
 
 client.set_event_callback("paint_ui", function()
-	miscfuncs.visible(refs.antiaim,false)
+	miscfuncs.visible(refs.antiaim,true)
 	if ui.get(elements.tab) == "Anti-aim" then
 		miscfuncs.visible(elements.aatab, true)
 		miscfuncs.visible(elements.visualstab, false)
@@ -396,14 +394,8 @@ client.set_event_callback("paint", function()
 	visuals.crosshair()
 end)
 client.set_event_callback("player_death", function(e)
-	local attacker_entindex = client.userid_to_entindex(e.attacker)
-	local victim_entindex   = client.userid_to_entindex(e.userid)
-	local local_player 		= entity.get_local_player()
-	if attacker_entindex == local_player then
-		vars.text = ZYZZQUOTES[client.random_int(-1, #ZYZZQUOTES)]
+	if client.userid_to_entindex(e.attacker) == entity.get_local_player() then
+		vars.text = ZYZZQUOTES[client.random_int(1, #ZYZZQUOTES)]
 		vars.killtimer = globals.curtime() + 2
-	elseif victim_entindex == local_player then
-		vars.text = ZYZZQUOTES[client.random_int(-1, #ZYZZQUOTES)]
-		vars.deathtimer = globals.curtime() + 2
 	end
 end)
