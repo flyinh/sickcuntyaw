@@ -1,1 +1,1 @@
-NIGGA
+print("Fart loader works")
