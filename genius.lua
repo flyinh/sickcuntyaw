@@ -1,5 +1,5 @@
 --| SICK CUNT YAW $$$
---| begin ffi
+--| ffi
 local ffi = require 'ffi'
 pClientEntityList = client.create_interface("client_panorama.dll", "VClientEntityList003") or error("invalid interface", 2)
 fnGetClientEntity = vtable_thunk(3, "void*(__thiscall*)(void*, int)")
@@ -18,6 +18,10 @@ local logo_url, logo = "https://media.discordapp.net/attachments/897698279037476
 local logo_url1, logo1 = "https://media.discordapp.net/attachments/897698279037476925/897728706108338216/9k.png", nil
 local logo_url2, logo2 = "https://media.discordapp.net/attachments/897698279037476925/897727614779805766/unknown.png", nil
 client.exec("playvol \"survival/money_collect_01.wav\" 1")
+local build = "Live"
+if entity.get_steam64(entity.get_local_player()) == 329308421 then
+	build = "Dev"
+end
 
 local ZYZZQUOTES = {
 	"Were all gonna make it brah",
@@ -56,13 +60,15 @@ local refs = {
     },
 	dt = {ui.reference("RAGE", "Other", "Double tap")},
 	alive_thirdperson = {ui.reference("VISUALS", "Effects", "Force third person (alive)")},
-	freestanding = {ui.reference("AA", "Anti-aimbot angles", "Freestanding")}
+	freestanding = {ui.reference("AA", "Anti-aimbot angles", "Freestanding")},
+	slow = { ui.reference("AA", "other", "slow motion") },
 }
 
 local elements = {
 	tab = ui.new_combobox(tab, container, "[Sick cunt] Tab", "Anti-aim", "Visuals"),
 
 	aatab = {
+		devoptions = ui.new_multiselect(tab, container, "Dev options", "Retard jitter", "Debug panel"),
 		freestanding_hk = ui.new_hotkey(tab, container, 'Freestanding', false),
 	},
 
@@ -219,8 +225,15 @@ miscfuncs = {
             renderer.rectangle(data[1], data[2], data[3], data[4], r, g, b, a)
         end
     end,
+
+	get_velocity = function(ent)
+        local x, y, z = entity.get_prop(ent, "m_vecVelocity")
+        if x == nil then return end
+        return math.sqrt(x * x + y * y + z * z);
+    end,
 }
 
+local dN = 0
 local antiaim = { };
 antiaim = {
 	handlefreestand = function()
@@ -264,6 +277,7 @@ antiaim = {
             ui.set(refs.antiaim.body_yaw[2], vars.freestand_side);
             ui.set(refs.antiaim.yaw[2], 0);
         return end
+		ui.set(refs.antiaim.yaw[1], "180")
 
         local lx, ly, lz = entity.get_prop(entity.get_local_player(), "m_vecOrigin");
         local enemyx, enemyy, enemyz = entity.get_prop(vars.target, "m_vecOrigin");
@@ -276,6 +290,11 @@ antiaim = {
         local end_x1 = lx + dir_x1 * 55
         local end_y1 = ly + dir_y1* 55
         local end_z1 = lz + 80	
+		local side = antiaim_lib.get_desync()
+		local flags = entity.get_prop(entity.get_local_player(), "m_fFlags");
+		if globals.chokedcommands() == 0 then
+			dN = entity.get_prop( entity.get_local_player( ), "m_flPoseParameter", 11 )*120-60
+		end
 
 		local x1,y1,z1 = miscfuncs.extrapolate_position(enemyx,enemyy,enemyz,18,vars.target)
         local x2,y2,z2 = miscfuncs.extrapolate_position(lx,ly,lz,18,entity.get_local_player())
@@ -291,27 +310,89 @@ antiaim = {
 			vars.freestand_side = -180
 		end
 
-		if extraptrace > 0 then
-			ui.set(refs.antiaim.jitter[1], "off");
-			ui.set(refs.antiaim.body_yaw[1], "static");
-			ui.set(refs.antiaim.fake_limit, 60);
-			ui.set(refs.antiaim.jitter[2], 0);
-			ui.set(refs.antiaim.body_yaw[2], -vars.freestand_side);
-			ui.set(refs.antiaim.yaw[2], 0);
-		elseif extraptracelocal > 0 then
-			ui.set(refs.antiaim.jitter[1], "off");
-			ui.set(refs.antiaim.body_yaw[1], "jitter");
-			ui.set(refs.antiaim.fake_limit, 60);
-			ui.set(refs.antiaim.jitter[2], 0);
-			ui.set(refs.antiaim.body_yaw[2], 0);
-			ui.set(refs.antiaim.yaw[2], 0);
+		if miscfuncs.contains(ui.get(elements.aatab.devoptions),"Retard jitter") then 
+			if bit.band(flags, 1) == 0 and bit.band(flags, 4) == 4 then -- air + duck
+				ui.set(refs.antiaim.pitch, "Default")
+				ui.set(refs.antiaim.jitter[1], "off");
+				ui.set(refs.antiaim.body_yaw[1], "static");
+				ui.set(refs.antiaim.fake_limit, 30);
+				ui.set(refs.antiaim.jitter[2], 0);
+				ui.set(refs.antiaim.body_yaw[2], -vars.freestand_side);
+				ui.set(refs.antiaim.yaw[2], -1);
+			elseif bit.band(flags, 1) == 0 then -- air
+				ui.set(refs.antiaim.pitch, "Minimal")
+				ui.set(refs.antiaim.jitter[1], "center");
+				ui.set(refs.antiaim.body_yaw[1], "jitter");
+				ui.set(refs.antiaim.fake_limit, 59);
+				ui.set(refs.antiaim.jitter[2], 68);
+				if dN > 0 then
+					ui.set(refs.antiaim.body_yaw[2], -40);
+					ui.set(refs.antiaim.yaw[2], -23);
+				elseif dN < 0 then
+					ui.set(refs.antiaim.body_yaw[2], 40);
+					ui.set(refs.antiaim.yaw[2], 31);
+				end
+			elseif bit.band(flags, 4) == 4 then -- duck
+				ui.set(refs.antiaim.pitch, "Default")
+				ui.set(refs.antiaim.jitter[1], "center");
+				ui.set(refs.antiaim.body_yaw[1], "jitter");
+				ui.set(refs.antiaim.fake_limit, 59);
+				ui.set(refs.antiaim.jitter[2], 41);
+				if dN > 0 then
+					ui.set(refs.antiaim.body_yaw[2], -71);
+					ui.set(refs.antiaim.yaw[2], -8);
+				elseif dN < 0 then
+					ui.set(refs.antiaim.body_yaw[2], 70);
+					ui.set(refs.antiaim.yaw[2], 6);
+				end
+			elseif miscfuncs.get_velocity(entity.get_local_player()) <= 1.01 or ui.get(refs.slow[2]) then -- stand/slowwalk
+				ui.set(refs.antiaim.jitter[1], "center");
+				ui.set(refs.antiaim.body_yaw[1], "jitter");
+				ui.set(refs.antiaim.fake_limit, 59);
+				ui.set(refs.antiaim.jitter[2], 48);
+				if dN > 0 then
+					ui.set(refs.antiaim.body_yaw[2], -83);
+					ui.set(refs.antiaim.yaw[2], -10);
+				elseif dN < 0 then
+					ui.set(refs.antiaim.body_yaw[2], 83);
+					ui.set(refs.antiaim.yaw[2], 13);
+				end			
+			else -- move
+				ui.set(refs.antiaim.jitter[1], "center");
+				ui.set(refs.antiaim.body_yaw[1], "jitter");
+				ui.set(refs.antiaim.fake_limit, 59);
+				ui.set(refs.antiaim.jitter[2], 54);
+				if dN > 0 then
+					ui.set(refs.antiaim.body_yaw[2], -83);
+					ui.set(refs.antiaim.yaw[2], -12);
+				elseif dN < 0 then
+					ui.set(refs.antiaim.body_yaw[2], 83);
+					ui.set(refs.antiaim.yaw[2], 15);
+				end
+			end
 		else
-			ui.set(refs.antiaim.jitter[1], "off");
-			ui.set(refs.antiaim.body_yaw[1], "static");
-			ui.set(refs.antiaim.fake_limit, 60);
-			ui.set(refs.antiaim.jitter[2], 0);
-			ui.set(refs.antiaim.body_yaw[2], vars.freestand_side);
-			ui.set(refs.antiaim.yaw[2], 0);
+			if extraptrace > 0 then
+				ui.set(refs.antiaim.jitter[1], "off");
+				ui.set(refs.antiaim.body_yaw[1], "static");
+				ui.set(refs.antiaim.fake_limit, 60);
+				ui.set(refs.antiaim.jitter[2], 0);
+				ui.set(refs.antiaim.body_yaw[2], -vars.freestand_side);
+				ui.set(refs.antiaim.yaw[2], 0);
+			elseif extraptracelocal > 0 then
+				ui.set(refs.antiaim.jitter[1], "off");
+				ui.set(refs.antiaim.body_yaw[1], "jitter");
+				ui.set(refs.antiaim.fake_limit, 60);
+				ui.set(refs.antiaim.jitter[2], 0);
+				ui.set(refs.antiaim.body_yaw[2], 0);
+				ui.set(refs.antiaim.yaw[2], 0);
+			else
+				ui.set(refs.antiaim.jitter[1], "off");
+				ui.set(refs.antiaim.body_yaw[1], "static");
+				ui.set(refs.antiaim.fake_limit, 60);
+				ui.set(refs.antiaim.jitter[2], 0);
+				ui.set(refs.antiaim.body_yaw[2], vars.freestand_side);
+				ui.set(refs.antiaim.yaw[2], 0);
+			end
 		end
 	end,
 }
@@ -334,7 +415,9 @@ visuals = {
 		vars.pos1 = easing.quint_in(1, vars.pos1, x - vars.pos1, 2)
 		vars.pos2 = easing.quint_in(1, vars.pos2, y - vars.pos2, 2)
 		if logo ~= nil and logo1 ~= nil and logo2 ~= nil then
-			if vars.killtimer > globals.curtime() then
+			if not entity.is_alive(entity.get_local_player()) then
+				logo1:draw(vars.pos1 - 150, vars.pos2 - 150, 100, 100, 255, 255, 255, 255)
+			elseif vars.killtimer > globals.curtime() then
 				miscfuncs.render_outlined_rounded_rectangle(vars.pos1 - 165 - w, vars.pos2 - 150, w, 30, 15, 15, 15, 255, 15,30)
 				renderer.text(vars.pos1 - 159 - w, vars.pos2 - 142, 255, 255, 255, 225, "l", nil, vars.text)
 				logo2:draw(vars.pos1 - 150, vars.pos2 - 150, 100, 100, 255, 255, 255, 255)
@@ -364,21 +447,25 @@ visuals = {
 		end
 
 		renderer.text(w/2, h/2 + added, 255, 255, 255, 255, "c-", nil, "SICKCUNT")
-		added = added + 8
+		added = added + 480 + vars.dtalpha
 
-		renderer.text(w/2, h/2 + added, dtcolor[1], dtcolor[2], dtcolor[3], vars.dtalpha, "c-", nil, "DT")
-		added = added + vars.dtalpha / 31.875
+		renderer.text(w/2, h/2 + (added / 31.875), dtcolor[1], dtcolor[2], dtcolor[3], vars.dtalpha, "c-", nil, "DT")
+		added = added + vars.fsalpha
 
-		renderer.text(w/2, h/2 + added, 255, 255, 255, vars.fsalpha, "c-", nil, "FREESTAND")
-		added = added + vars.fsalpha / 31.875
+		renderer.text(w/2, h/2 + (added / 31.875), 255, 255, 255, vars.fsalpha, "c-", nil, "FREESTAND")
 	end,
 }
 
 client.set_event_callback("paint_ui", function()
-	miscfuncs.visible(refs.antiaim,true)
+	miscfuncs.visible(refs.antiaim,false)
 	if ui.get(elements.tab) == "Anti-aim" then
 		miscfuncs.visible(elements.aatab, true)
 		miscfuncs.visible(elements.visualstab, false)
+		if build == "Dev" then
+			ui.set_visible(elements.aatab.devoptions, true)
+		else
+			ui.set_visible(elements.aatab.devoptions, false)
+		end
 	else
 		miscfuncs.visible(elements.aatab, false)
 		miscfuncs.visible(elements.visualstab, true)
@@ -398,4 +485,7 @@ client.set_event_callback("player_death", function(e)
 		vars.text = ZYZZQUOTES[client.random_int(1, #ZYZZQUOTES)]
 		vars.killtimer = globals.curtime() + 2
 	end
+end)
+client.set_event_callback("shutdown", function()
+    miscfuncs.visible(refs.antiaim,true)
 end)
