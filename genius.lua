@@ -483,7 +483,7 @@ end)
 client.set_event_callback("player_death", function(e)
 	if client.userid_to_entindex(e.attacker) == entity.get_local_player() then
 		vars.text = ZYZZQUOTES[client.random_int(1, #ZYZZQUOTES)]
-		vars.killtimer = globals.curtime() + 2
+		vars.killtimer = globals.curtime() + 4.5
 	end
 end)
 client.set_event_callback("shutdown", function()
