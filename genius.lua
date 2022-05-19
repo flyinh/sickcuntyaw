@@ -13,7 +13,11 @@ local tab, container = "aa", "anti-aimbot angles"
 local easing = require("gamesense/easing") or error("easing libary required.")
 local images = require("gamesense/images") or error("image library required")
 local http = require("gamesense/http") or error("http library required")
-local antiaim_lib = require("gamesense/antiaim_funcs") or error("anti-aim library required")
+local aa_funcs = require("gamesense/antiaim_funcs") or error("anti-aim library required")
+local aa_config = { "Global", "Stand", "Slow motion", "Moving" , "Air", "Duck T", "Duck CT", "Warmup" }
+local rage = {}
+local active_idx = 1
+local last_anti = 0
 local logo_url, logo = "https://media.discordapp.net/attachments/897698279037476925/897727573134573578/unknown.png", nil
 local logo_url1, logo1 = "https://media.discordapp.net/attachments/897698279037476925/897728706108338216/9k.png", nil
 local logo_url2, logo2 = "https://media.discordapp.net/attachments/897698279037476925/897727614779805766/unknown.png", nil
@@ -22,6 +26,30 @@ local build = "Live"
 if entity.get_steam64(entity.get_local_player()) == 329308421 then
 	build = "Dev"
 end
+
+local state_to_num = {
+    ["Global"] = 1,
+    ["Stand"] = 2,
+    ["Slow motion"] = 3,
+    ["Moving"] = 4,
+    ["Air"] = 5,
+    ["Duck T"] = 6,
+    ["Duck CT"] = 7,
+    ["Warmup"] = 8,
+}
+
+local name_to_num = {
+    ["Global"] = 1,
+    ["Stand"] = 2,
+    ["Slow motion"] = 3,
+    ["Manual right"] = 4,
+    ["Manual left"] = 5,
+    ["Moving"] = 6,
+    ["Air"] = 7,
+    ["Duck T"] = 8,
+    ["Duck CT"] = 9,
+    ["On key"] = 10,
+}
 
 local ZYZZQUOTES = {
 	"Were all gonna make it brah",
@@ -44,37 +72,56 @@ local vars = {
 	text = "nil"
 }
 
-local refs = {
-	antiaim = {
-        enabled = { ui.reference("AA", "Anti-aimbot angles", "Enabled") },
-        pitch = ui.reference("AA", "Anti-aimbot angles", "Pitch"),
-        yaw = { ui.reference("AA", "Anti-aimbot angles", "Yaw") },
-        yaw_base = ui.reference("AA", "Anti-aimbot angles", "Yaw Base"),
-        jitter = { ui.reference("AA", "Anti-aimbot angles", "Yaw jitter") },
-        body_yaw = { ui.reference("AA", "Anti-aimbot angles", "Body yaw") },
-        fs = { ui.reference("AA", "Anti-aimbot angles", "Freestanding")},
-        fs_body_yaw = ui.reference("AA", "Anti-aimbot angles", "Freestanding body yaw"),
-        fake_limit = ui.reference("AA", "Anti-aimbot angles", "Fake yaw limit"),
-        edge = ui.reference("AA", "Anti-aimbot angles", "Edge yaw"),
-        roll = ui.reference("AA", "Anti-aimbot angles", "Roll"),
-    },
-	dt = {ui.reference("RAGE", "Other", "Double tap")},
-	alive_thirdperson = {ui.reference("VISUALS", "Effects", "Force third person (alive)")},
-	freestanding = {ui.reference("AA", "Anti-aimbot angles", "Freestanding")},
-	slow = { ui.reference("AA", "other", "slow motion") },
+local ref = {
+    enabled = ui.reference("AA", "Anti-aimbot angles", "Enabled"),
+    pitch = ui.reference("AA", "Anti-aimbot angles", "pitch"),
+    yawbase = ui.reference("AA", "Anti-aimbot angles", "Yaw base"),
+    fakeyawlimit = ui.reference("AA", "anti-aimbot angles", "Fake yaw limit"),
+    fsbodyyaw = ui.reference("AA", "anti-aimbot angles", "Freestanding body yaw"),
+    edgeyaw = ui.reference("AA", "Anti-aimbot angles", "Edge yaw"),
+    maxprocticks = ui.reference("MISC", "Settings", "sv_maxusrcmdprocessticks"),
+    fakeduck = ui.reference("RAGE", "Other", "Duck peek assist"),
+    safepoint = ui.reference("RAGE", "Aimbot", "Force safe point"),
+    forcebaim = ui.reference("RAGE", "Other", "Force body aim"),
+    roll = ui.reference("aa", "Anti-aimbot angles", "roll");
+    player_list = ui.reference("PLAYERS", "Players", "Player list"),
+    reset_all = ui.reference("PLAYERS", "Players", "Reset all"),
+    apply_all = ui.reference("PLAYERS", "Adjustments", "Apply to all"),
+    load_cfg = ui.reference("Config", "Presets", "Load"),
+    fl_limit = ui.reference("AA", "Fake lag", "Limit"),
+    dt_limit = ui.reference("RAGE", "Other", "Double tap fake lag limit"),
+    dmg = ui.reference("RAGE", "Aimbot", "Minimum damage"),
+
+    --[1] = combobox/checkbox | [2] = slider/hotkey
+    rage = { ui.reference("RAGE", "Aimbot", "Enabled") },
+    yaw = { ui.reference("AA", "Anti-aimbot angles", "Yaw") },
+    quickpeek = { ui.reference("RAGE", "Other", "Quick peek assist") },
+    yawjitter = { ui.reference("AA", "Anti-aimbot angles", "Yaw jitter") },
+    bodyyaw = { ui.reference("AA", "Anti-aimbot angles", "Body yaw") },
+    freestand = { ui.reference("AA", "Anti-aimbot angles", "Freestanding") },
+    os = { ui.reference("AA", "Other", "On shot anti-aim") },
+    slow = { ui.reference("AA", "Other", "Slow motion") },
+    dt = { ui.reference("RAGE", "Other", "Double tap") },
+    fakelag = { ui.reference("AA", "Fake lag", "Enabled") },
+	alive_thirdperson = { ui.reference("Visuals", "Effects", "Force third person (alive)") }
 }
 
-local elements = {
-	tab = ui.new_combobox(tab, container, "[Sick cunt] Tab", "Anti-aim", "Visuals"),
+local items = {
+    luaenable = ui.new_checkbox('AA', 'Anti-aimbot angles', 'Sickcunt builder'),
+    tabselect = ui.new_combobox("AA","Anti-aimbot angles", "Tab selector", "Anti-Aim", "Misc"),
+    main_settings = ui.new_multiselect("AA","Anti-aimbot angles", "Anti-Aim Enhancements", "Anti-backstab", "Legit AA on use"),
+    aa_condition = ui.new_combobox("AA","Anti-aimbot angles", "Anti-Aim Conditions", aa_config),
 
-	aatab = {
-		devoptions = ui.new_multiselect(tab, container, "Dev options", "Retard jitter", "Debug panel"),
-		freestanding_hk = ui.new_hotkey(tab, container, 'Freestanding', false),
-	},
+    key_edgeyaw = ui.new_hotkey('AA', 'Anti-aimbot angles', 'Edge-yaw'),
+    key_roll = ui.new_hotkey('AA', 'Anti-aimbot angles', 'Roll'),
+    key_forward = ui.new_hotkey('AA', 'Anti-aimbot angles', 'Manual Forward'),
+    key_left = ui.new_hotkey('AA', 'Anti-aimbot angles', 'Manual Left'),
+    key_right = ui.new_hotkey('AA', 'Anti-aimbot angles', 'Manual Right'),
 
-	visualstab = {
-		indoptions = ui.new_multiselect(tab, container, "Visual options", "Crosshair", "Motivational Zyzz"),
-	},
+    watermark = ui.new_checkbox('AA', 'Anti-aimbot angles', 'Watermark'),
+    spectator = ui.new_checkbox('AA', 'Anti-aimbot angles', 'Spectators'),
+    keybind = ui.new_checkbox('AA', 'Anti-aimbot angles', 'Keybinds'),
+	visoptions = ui.new_multiselect('AA', 'Anti-aimbot angles', "Visual options", "Crosshair", "Motivational Zyzz")
 }
 
 local hk_switches = {
@@ -110,8 +157,54 @@ end
 local function vec3(ax, ay, az, bx, by, bz)
     return ax * bx + ay * by + az * bz;
 end
+
 local miscfuncs = { };
 miscfuncs = {
+	set_og_menu = function(state)
+		if state == nil then
+			state = true
+		end
+		ui.set_visible(ref.enabled, state)
+		ui.set_visible(ref.pitch, state)
+		ui.set_visible(ref.yawbase, state)
+		ui.set_visible(ref.yaw[1], state)
+		ui.set_visible(ref.yaw[2], state)
+		ui.set_visible(ref.yawjitter[1], state)
+		ui.set_visible(ref.yawjitter[2], state)
+		ui.set_visible(ref.bodyyaw[1], state)
+		ui.set_visible(ref.bodyyaw[2], state)
+		ui.set_visible(ref.fakeyawlimit, state)
+		ui.set_visible(ref.fsbodyyaw, state)
+		ui.set_visible(ref.edgeyaw, state)
+		ui.set_visible(ref.roll, state)
+		ui.set_visible(ref.freestand[1], state)
+		ui.set_visible(ref.freestand[2], state)
+	end,
+
+	set_lua_menu = function()
+		ui.set_visible(items.tabselect, false)
+		ui.set_visible(items.watermark, false)
+		ui.set_visible(items.spectator, false)
+		ui.set_visible(items.keybind, false)
+		ui.set_visible(items.main_settings, false)
+		ui.set_visible(items.aa_condition, false)
+		ui.set_visible(items.key_edgeyaw, false)
+		ui.set_visible(items.key_forward, false)
+		ui.set_visible(items.key_left, false)
+		ui.set_visible(items.key_right, false)
+		ui.set_visible(items.key_roll, false)
+		if ui.get(items.luaenable) then
+			miscfuncs.set_og_menu(false)
+			ui.set_visible(items.tabselect, true)
+			local select_aa = ui.get(items.tabselect) == "Anti-Aim"
+			local select_misc = ui.get(items.tabselect) == "Misc"
+			ui.set_visible(items.main_settings, select_main)
+			ui.set_visible(items.key_roll, select_main)
+			ui.set_visible(items.visoptions, select_misc)
+			ui.set_visible(items.aa_condition, select_aa)
+		end
+	end,
+
 	get_attachment_vector = function(world_model)
 		local me = entity.get_local_player()
 		local wpn = entity.get_player_weapon(me)
@@ -233,180 +326,163 @@ miscfuncs = {
     end,
 }
 
-local dN = 0
+for i=1, #aa_config do
+    rage[i] = {
+        c_enabled = ui.new_checkbox("aa", "anti-aimbot angles", "Enable " .. aa_config[i] .. " config"),
+        c_pitch = ui.new_combobox("aa", "anti-aimbot angles", "Pitch", {"Off","Default","Up", "Down", "Minimal", "Random"}),
+        c_yawbase = ui.new_combobox("aa", "anti-aimbot angles", "Yaw base", {"Local view","At targets"}),
+        c_yaw = ui.new_combobox("aa", "anti-aimbot angles", "Yaw", {"Off", "180", "Spin", "Static", "180z", "Crosshair"}),
+        c_yaw_sli = ui.new_slider("aa", "anti-aimbot angles", "\n", -180, 180, 0, true, "°", 1),
+
+        c_jitter = ui.new_combobox("aa", "anti-aimbot angles", "Yaw jitter", {"Off","Offset","Center","Random"}),
+        c_jitter_sli = ui.new_slider("aa", "anti-aimbot angles", "\n", -180, 180, 0, true, "°", 1),
+        c_body = ui.new_combobox("aa", "anti-aimbot angles", "Body yaw", {"Off","Opposite","Jitter","Static"}),
+        c_body_sli = ui.new_slider("aa", "anti-aimbot angles", "\n", -180, 180, 0, true, "°", 1),
+        c_free_b_yaw = ui.new_checkbox("aa", "anti-aimbot angles", "Freestanding body yaw"),
+        c_lby_limit = ui.new_slider("aa", "anti-aimbot angles", "Fake yaw limit", 0, 60, 60, true, "°", 1),
+        c_edge_yaw = ui.new_checkbox("aa", "anti-aimbot angles", "Edge yaw"),
+        c_roll = ui.new_slider("AA", "anti-aimbot angles", "Roll AA", -50, 50, 0, true, "°", 1),
+        adv_combo = ui.new_multiselect("AA", "Anti-aimbot angles", "Extras", {"Side based yaw"}),
+        l_limit = ui.new_slider("AA", "Anti-aimbot angles", "Left yaw", -180, 180, 0, true, "°"),
+        r_limit = ui.new_slider("AA", "Anti-aimbot angles", "Right yaw", -180, 180, 0, true, "°"),
+		lb_limit = ui.new_slider("AA", "Anti-aimbot angles", "Left body yaw", -180, 180, 0, true, "°"),
+        rb_limit = ui.new_slider("AA", "Anti-aimbot angles", "Right body yaw", -180, 180, 0, true, "°")
+    }
+end
+local enable_anti       = ui.reference("aa", "anti-aimbot angles", "Enabled")
+local pitch             = ui.reference("aa", "anti-aimbot angles", "Pitch")
+local yawbase           = ui.reference("aa", "anti-aimbot angles", "Yaw base")
+local yaw , yaw_sli     = ui.reference("aa", "anti-aimbot angles", "Yaw")
+local jitter,jitter_sli = ui.reference("aa", "anti-aimbot angles", "Yaw jitter")
+local body ,body_sli    = ui.reference("aa", "anti-aimbot angles", "Body yaw")
+local lby_limit         = ui.reference("aa", "anti-aimbot angles", "Fake yaw limit")
+local edge              = ui.reference("aa", "anti-aimbot angles", "Edge yaw")
+local free,free_key     = ui.reference("aa", "anti-aimbot angles", "Freestanding")
+
+local function get_mode()
+	local xxx = "Other"
+	local lp = entity.get_local_player()
+	local vx,vy,vz = entity.get_prop(lp, "m_vecVelocity")
+	local velocity = math.sqrt(vx*vx + vy*vy + vz*vz)
+	local slowwalk_key = ui.get(ref.slow[1]) and ui.get(ref.slow[2])
+	local flags = entity.get_prop(entity.get_local_player(), "m_fFlags");
+	local teamnum = entity.get_prop(lp, "m_iTeamNum")
+	local ct = teamnum == 3
+	local t = teamnum == 2
+	if velocity < 5 then
+		xxx = "Stand"
+	end
+	if bit.band(flags, 4) == 4 then
+		if ct then
+			xxx = "Duck CT"
+		elseif t then
+			xxx = "Duck T"
+		end
+	end
+	if velocity > 5 then
+		xxx = "Moving"
+	end
+	if bit.band(flags, 1) == 0 then
+		xxx = "Air"
+	end
+	if velocity > 1.01 and slowwalk_key then
+		xxx = "Slow motion"
+	end
+	return xxx
+end
 local antiaim = { };
 antiaim = {
-	handlefreestand = function()
-		local state = ui.get(elements.aatab.freestanding_hk)
-		for k, v in pairs(refs.freestanding) do
-			ui.set(v, hk_switches[state][k])
+	handle_antiaim_builder = function(cmd)
+		local localplayer = entity.get_local_player()
+		if localplayer == nil or not entity.is_alive(localplayer) then
+			return
 		end
-	end,
+		local state = get_mode()
+		local state_num = state_to_num[state]
+		desync_type = entity.get_prop( entity.get_local_player( ), "m_flPoseParameter", 11 )*120-60
+		local state_enabled = ui.get(rage[state_num].c_enabled)
 
-	getbesttarget = function()
-        local ent = entity.get_local_player();
-        if ent == nil then return end
-        local lx, ly, lz = entity.get_prop(ent, "m_vecOrigin");
-
-        if lx == nil then return end
-        
-        local players = entity.get_players(true);
-        local pitch, yaw = client.camera_angles();
-        local vx, vy, vz = miscfuncs.angle_to_vec(pitch, yaw);
-        
-        local closest_fov_cos = -1;
-        vars.target = nil;
-        for i = 1, #players do
-            local idx = players[i];
-            if entity.is_alive(idx) then
-                local fov_cos = miscfuncs.get_fov(idx, vx, vy, vz, lx, ly, lz);
-                if fov_cos > closest_fov_cos then
-                    closest_fov_cos = fov_cos;
-                    vars.target = idx;
-                end
-            end
-        end
-    end,
-
-	run = function()
-		if entity.is_dormant(vars.target) then 
-            ui.set(refs.antiaim.jitter[1], "off");
-            ui.set(refs.antiaim.body_yaw[1], "static");
-            ui.set(refs.antiaim.fake_limit, 60);
-            ui.set(refs.antiaim.jitter[2], 0);
-            ui.set(refs.antiaim.body_yaw[2], vars.freestand_side);
-            ui.set(refs.antiaim.yaw[2], 0);
-        return end
-		ui.set(refs.antiaim.yaw[1], "180")
-
-        local lx, ly, lz = entity.get_prop(entity.get_local_player(), "m_vecOrigin");
-        local enemyx, enemyy, enemyz = entity.get_prop(vars.target, "m_vecOrigin");
-        local dododada = miscfuncs.CalcAngle(lx, ly, enemyx, enemyy)
-        local dir_x, dir_y, dir_z = miscfuncs.Angle_Vector(0, (dododada - 50))
-        local dir_x1, dir_y1, dir_z1 = miscfuncs.Angle_Vector(0, (dododada + 50))
-        local end_x = lx + dir_x * 55
-        local end_y = ly + dir_y * 55
-        local end_z = lz + 80	
-        local end_x1 = lx + dir_x1 * 55
-        local end_y1 = ly + dir_y1* 55
-        local end_z1 = lz + 80	
-		local side = antiaim_lib.get_desync()
-		local flags = entity.get_prop(entity.get_local_player(), "m_fFlags");
-		if globals.chokedcommands() == 0 then
-			dN = entity.get_prop( entity.get_local_player( ), "m_flPoseParameter", 11 )*120-60
-		end
-
-		local x1,y1,z1 = miscfuncs.extrapolate_position(enemyx,enemyy,enemyz,18,vars.target)
-        local x2,y2,z2 = miscfuncs.extrapolate_position(lx,ly,lz,18,entity.get_local_player())
-
-        local _, freestandleft = client.trace_bullet(vars.target, enemyx, enemyy, enemyz + 65, end_x, end_y, end_z)
-        local _, freestandright = client.trace_bullet(vars.target, enemyx, enemyy, enemyz + 65, end_x1, end_y1, end_z1)
-        local _, extraptrace = client.trace_bullet(vars.target, x1, y1, z1 + 65, lx, ly, lz + 65)
-        local _, extraptracelocal = client.trace_bullet(vars.target, enemyx, enemyy, enemyz + 65, x2, y2, z2 + 65)
-
-		if freestandleft > freestandright then
-			vars.freestand_side = 180
-		elseif freestandleft < freestandright then
-			vars.freestand_side = -180
-		end
-
-		if miscfuncs.contains(ui.get(elements.aatab.devoptions),"Retard jitter") then 
-			if bit.band(flags, 1) == 0 and bit.band(flags, 4) == 4 then -- air + duck
-				ui.set(refs.antiaim.pitch, "Default")
-				ui.set(refs.antiaim.jitter[1], "off");
-				ui.set(refs.antiaim.body_yaw[1], "static");
-				ui.set(refs.antiaim.fake_limit, 30);
-				ui.set(refs.antiaim.jitter[2], 0);
-				ui.set(refs.antiaim.body_yaw[2], -vars.freestand_side);
-				ui.set(refs.antiaim.yaw[2], -1);
-			elseif bit.band(flags, 1) == 0 then -- air
-				ui.set(refs.antiaim.pitch, "Minimal")
-				ui.set(refs.antiaim.jitter[1], "center");
-				ui.set(refs.antiaim.body_yaw[1], "jitter");
-				ui.set(refs.antiaim.fake_limit, 59);
-				ui.set(refs.antiaim.jitter[2], 68);
-				if dN > 0 then
-					ui.set(refs.antiaim.body_yaw[2], -40);
-					ui.set(refs.antiaim.yaw[2], -23);
-				elseif dN < 0 then
-					ui.set(refs.antiaim.body_yaw[2], 40);
-					ui.set(refs.antiaim.yaw[2], 31);
+		if state_enabled then
+			ui.set(ref.pitch, ui.get(rage[state_num].c_pitch))
+			ui.set(ref.yawbase, ui.get(rage[state_num].c_yawbase))
+			ui.set(ref.yaw[1], ui.get(rage[state_num].c_yaw))
+			ui.set(ref.yawjitter[1], ui.get(rage[state_num].c_jitter))
+			ui.set(ref.yawjitter[2], ui.get(rage[state_num].c_jitter_sli))
+			ui.set(ref.bodyyaw[1], ui.get(rage[state_num].c_body))
+			ui.set(ref.fsbodyyaw, ui.get(rage[state_num].c_free_b_yaw))
+			ui.set(ref.fakeyawlimit, ui.get(rage[state_num].c_lby_limit))
+			ui.set(ref.edgeyaw, ui.get(rage[state_num].c_edge_yaw))
+			cmd.roll = ui.get(rage[state_num].c_roll)
+			if miscfuncs.contains(ui.get(rage[state_num].adv_combo), "Side based yaw") then
+				if desync_type > 0 then
+					--left
+					ui.set(ref.yaw[2], ui.get(rage[state_num].l_limit))
+					ui.set(ref.bodyyaw[2], ui.get(rage[state_num].lb_limit))
+				elseif desync_type < 0 then
+					--right
+					ui.set(ref.yaw[2], ui.get(rage[state_num].r_limit))
+					ui.set(ref.bodyyaw[2], ui.get(rage[state_num].rb_limit))
 				end
-			elseif bit.band(flags, 4) == 4 then -- duck
-				ui.set(refs.antiaim.pitch, "Default")
-				ui.set(refs.antiaim.jitter[1], "center");
-				ui.set(refs.antiaim.body_yaw[1], "jitter");
-				ui.set(refs.antiaim.fake_limit, 59);
-				ui.set(refs.antiaim.jitter[2], 41);
-				if dN > 0 then
-					ui.set(refs.antiaim.body_yaw[2], -71);
-					ui.set(refs.antiaim.yaw[2], -8);
-				elseif dN < 0 then
-					ui.set(refs.antiaim.body_yaw[2], 70);
-					ui.set(refs.antiaim.yaw[2], 6);
-				end
-			elseif miscfuncs.get_velocity(entity.get_local_player()) <= 1.01 or ui.get(refs.slow[2]) then -- stand/slowwalk
-				ui.set(refs.antiaim.jitter[1], "center");
-				ui.set(refs.antiaim.body_yaw[1], "jitter");
-				ui.set(refs.antiaim.fake_limit, 59);
-				ui.set(refs.antiaim.jitter[2], 48);
-				if dN > 0 then
-					ui.set(refs.antiaim.body_yaw[2], -83);
-					ui.set(refs.antiaim.yaw[2], -10);
-				elseif dN < 0 then
-					ui.set(refs.antiaim.body_yaw[2], 83);
-					ui.set(refs.antiaim.yaw[2], 13);
-				end			
-			else -- move
-				ui.set(refs.antiaim.jitter[1], "center");
-				ui.set(refs.antiaim.body_yaw[1], "jitter");
-				ui.set(refs.antiaim.fake_limit, 59);
-				ui.set(refs.antiaim.jitter[2], 54);
-				if dN > 0 then
-					ui.set(refs.antiaim.body_yaw[2], -83);
-					ui.set(refs.antiaim.yaw[2], -12);
-				elseif dN < 0 then
-					ui.set(refs.antiaim.body_yaw[2], 83);
-					ui.set(refs.antiaim.yaw[2], 15);
-				end
+			else
+				ui.set(ref.bodyyaw[2], ui.get(rage[state_num].c_body_sli))
+				ui.set(ref.yaw[2], ui.get(rage[state_num].c_yaw_sli))
 			end
 		else
-			if extraptrace > 0 then
-				ui.set(refs.antiaim.jitter[1], "off");
-				ui.set(refs.antiaim.body_yaw[1], "static");
-				ui.set(refs.antiaim.fake_limit, 60);
-				ui.set(refs.antiaim.jitter[2], 0);
-				ui.set(refs.antiaim.body_yaw[2], -vars.freestand_side);
-				ui.set(refs.antiaim.yaw[2], 0);
-			elseif extraptracelocal > 0 then
-				ui.set(refs.antiaim.jitter[1], "off");
-				ui.set(refs.antiaim.body_yaw[1], "jitter");
-				ui.set(refs.antiaim.fake_limit, 60);
-				ui.set(refs.antiaim.jitter[2], 0);
-				ui.set(refs.antiaim.body_yaw[2], 0);
-				ui.set(refs.antiaim.yaw[2], 0);
-			else
-				ui.set(refs.antiaim.jitter[1], "off");
-				ui.set(refs.antiaim.body_yaw[1], "static");
-				ui.set(refs.antiaim.fake_limit, 60);
-				ui.set(refs.antiaim.jitter[2], 0);
-				ui.set(refs.antiaim.body_yaw[2], vars.freestand_side);
-				ui.set(refs.antiaim.yaw[2], 0);
-			end
+			-- global is 1, check line 183
+			ui.set(ref.pitch, ui.get(rage[1].c_pitch))
+			ui.set(ref.yawbase, ui.get(rage[1].c_yawbase))
+			ui.set(ref.yaw[1], ui.get(rage[1].c_yaw))
+			ui.set(ref.yaw[2], ui.get(rage[1].c_yaw_sli))
+			ui.set(ref.yawjitter[1], ui.get(rage[1].c_jitter))
+			ui.set(ref.yawjitter[2], ui.get(rage[1].c_jitter_sli))
+			ui.set(ref.bodyyaw[1], ui.get(rage[1].c_body))
+			ui.set(ref.bodyyaw[2], ui.get(rage[1].c_body_sli))
+			ui.set(ref.fsbodyyaw, ui.get(rage[1].c_free_b_yaw))
+			ui.set(ref.fakeyawlimit, ui.get(rage[1].c_lby_limit))
+			ui.set(ref.edgeyaw, ui.get(rage[1].c_edge_yaw))
 		end
+		ui.set(ref.enabled, true)
 	end,
 }
+
+local function handle_menu()
+    local enabled = ui.get(items.luaenable) and ui.get(items.tabselect) == "Anti-Aim"
+    ui.set_visible(items.aa_condition, enabled)
+
+    for i=1, #aa_config do
+        local show = ui.get(items.aa_condition) == aa_config[i] and enabled
+        ui.set_visible(rage[i].c_enabled, show and i > 1)
+        ui.set_visible(rage[i].c_pitch,show)
+        ui.set_visible(rage[i].c_yawbase,show)
+        ui.set_visible(rage[i].c_yaw,show)
+        ui.set_visible(rage[i].c_yaw_sli,show)
+        ui.set_visible(rage[i].c_jitter,show)
+        ui.set_visible(rage[i].c_jitter_sli,show)
+        ui.set_visible(rage[i].c_body,show)
+        ui.set_visible(rage[i].c_body_sli,show)
+        ui.set_visible(rage[i].c_free_b_yaw, show)
+        ui.set_visible(rage[i].c_lby_limit,show)
+        ui.set_visible(rage[i].c_edge_yaw, show)
+        ui.set_visible(rage[i].c_roll, show)
+        ui.set_visible(rage[i].adv_combo, show )
+        ui.set_visible(rage[i].l_limit, show and miscfuncs.contains(ui.get(rage[i].adv_combo), "Side based yaw"))
+        ui.set_visible(rage[i].r_limit, show and miscfuncs.contains(ui.get(rage[i].adv_combo), "Side based yaw"))
+		ui.set_visible(rage[i].lb_limit, show and miscfuncs.contains(ui.get(rage[i].adv_combo), "Side based yaw"))
+        ui.set_visible(rage[i].rb_limit, show and miscfuncs.contains(ui.get(rage[i].adv_combo), "Side based yaw"))
+    end
+end
+handle_menu()
 
 local visuals = { };
 visuals = {
 	Zyzzhud = function()
-		if not miscfuncs.contains(ui.get(elements.visualstab.indoptions),"Motivational Zyzz") then return end
+		if not miscfuncs.contains(ui.get(items.visoptions),"Motivational Zyzz") then return end
 		local lx, ly, lz = entity.hitbox_position(entity.get_local_player(), 14)
  		local w, h = renderer.measure_text(nil, string.format("  %s  ", vars.text))
 		pos = miscfuncs.get_attachment_vector(false)
-		if pos == nil and not ui.get(refs.alive_thirdperson[2]) then
+		if pos == nil and not ui.get(ref.alive_thirdperson[2]) then
 			return
-		elseif pos == nil or ui.get(refs.alive_thirdperson[2]) then 
+		elseif pos == nil or ui.get(ref.alive_thirdperson[2]) then 
 			x, y, z = renderer.world_to_screen(lx, ly, lz)
 		else
 			x, y, z = renderer.world_to_screen(pos[1], pos[2], pos[3])
@@ -429,14 +505,14 @@ visuals = {
 	end,
 
 	crosshair = function()
-		if not miscfuncs.contains(ui.get(elements.visualstab.indoptions),"Crosshair") then return end
+		if not miscfuncs.contains(ui.get(items.visoptions),"Crosshair") then return end
 		local w, h = client.screen_size()
 		local added = 15
-		local charge = antiaim_lib.get_double_tap()
+		local charge = aa_funcs.get_double_tap()
 		local dtcolor = { 0,0,0 }
 
-		vars.dtalpha1 = ui.get(refs.dt[2]) and 255 or 0
-		vars.fsalpha1 = ui.get(elements.aatab.freestanding_hk) and 255 or 0
+		vars.dtalpha1 = ui.get(ref.dt[2]) and 255 or 0
+		vars.fsalpha1 = ui.get(ref.freestand[2]) and 255 or 0
 		vars.dtalpha = easing.quint_in(1, vars.dtalpha, vars.dtalpha1 - vars.dtalpha, 1.5)
 		vars.fsalpha = easing.quint_in(1, vars.fsalpha, vars.fsalpha1 - vars.fsalpha, 1.5)
 
@@ -452,29 +528,17 @@ visuals = {
 		renderer.text(w/2, h/2 + (added / 31.875), dtcolor[1], dtcolor[2], dtcolor[3], vars.dtalpha, "c-", nil, "DT")
 		added = added + vars.fsalpha
 
-		renderer.text(w/2, h/2 + (added / 31.875), 255, 255, 255, vars.fsalpha, "c-", nil, "FREESTAND")
+		renderer.text(w/2, h/2 + (added / 31.875), 255, 255, 255, vars.fsalpha, "c-", nil, "FREESTAND")--]]
 	end,
 }
 
 client.set_event_callback("paint_ui", function()
-	miscfuncs.visible(refs.antiaim,false)
-	if ui.get(elements.tab) == "Anti-aim" then
-		miscfuncs.visible(elements.aatab, true)
-		miscfuncs.visible(elements.visualstab, false)
-		if build == "Dev" then
-			ui.set_visible(elements.aatab.devoptions, true)
-		else
-			ui.set_visible(elements.aatab.devoptions, false)
-		end
-	else
-		miscfuncs.visible(elements.aatab, false)
-		miscfuncs.visible(elements.visualstab, true)
-	end
+    handle_menu()
+    miscfuncs.set_og_menu()
+    miscfuncs.set_lua_menu()
 end)
-client.set_event_callback("setup_command", function()
-	antiaim.handlefreestand()
-	antiaim.getbesttarget()
-	antiaim.run()
+client.set_event_callback("setup_command", function(cmd)
+	antiaim.handle_antiaim_builder(cmd)
 end)
 client.set_event_callback("paint", function()
 	visuals.Zyzzhud()
@@ -483,9 +547,21 @@ end)
 client.set_event_callback("player_death", function(e)
 	if client.userid_to_entindex(e.attacker) == entity.get_local_player() then
 		vars.text = ZYZZQUOTES[client.random_int(1, #ZYZZQUOTES)]
-		vars.killtimer = globals.curtime() + 4.5
+		vars.killtimer = globals.curtime() + 2
 	end
 end)
 client.set_event_callback("shutdown", function()
-    miscfuncs.visible(refs.antiaim,true)
+    miscfuncs.set_og_menu(true)
 end)
+local function init_callbacks()
+    ui.set_callback(items.luaenable, handle_menu)
+    ui.set_callback(items.aa_condition, handle_menu)
+
+    for i=1, #aa_config do
+       
+        ui.set_callback(rage[i].c_yaw, handle_menu)
+        ui.set_callback(rage[i].c_jitter, handle_menu)
+        ui.set_callback(rage[i].c_body, handle_menu)
+    end
+end
+init_callbacks()
